@@ -17,6 +17,7 @@ import (
 // as well as loading/file watching logic for deej's configuration file
 type CanonicalConfig struct {
 	SliderMapping *sliderMap
+	ButtonMapping *sliderMap
 
 	ConnectionInfo struct {
 		COMPort  string
@@ -26,6 +27,8 @@ type CanonicalConfig struct {
 	InvertSliders bool
 
 	NoiseReductionLevel string
+
+	NumButtons int
 
 	logger             *zap.SugaredLogger
 	notifier           Notifier
@@ -49,10 +52,12 @@ const (
 	configType = "yaml"
 
 	configKeySliderMapping       = "slider_mapping"
+	configKeyButtonMapping       = "button_mapping"
 	configKeyInvertSliders       = "invert_sliders"
 	configKeyCOMPort             = "com_port"
 	configKeyBaudRate            = "baud_rate"
 	configKeyNoiseReductionLevel = "noise_reduction"
+	configKeyNumButtons          = "num_buttons"
 
 	defaultCOMPort  = "COM4"
 	defaultBaudRate = 9600
@@ -223,6 +228,11 @@ func (cc *CanonicalConfig) populateFromVipers() error {
 		cc.internalConfig.GetStringMapStringSlice(configKeySliderMapping),
 	)
 
+	// button mapping is only from user config
+	cc.ButtonMapping = buttonMapFromConfig(
+		cc.userConfig.GetStringMapStringSlice(configKeyButtonMapping),
+	)
+
 	// get the rest of the config fields - viper saves us a lot of effort here
 	cc.ConnectionInfo.COMPort = cc.userConfig.GetString(configKeyCOMPort)
 
@@ -238,6 +248,7 @@ func (cc *CanonicalConfig) populateFromVipers() error {
 
 	cc.InvertSliders = cc.userConfig.GetBool(configKeyInvertSliders)
 	cc.NoiseReductionLevel = cc.userConfig.GetString(configKeyNoiseReductionLevel)
+	cc.NumButtons = cc.userConfig.GetInt(configKeyNumButtons)
 
 	cc.logger.Debug("Populated config fields from vipers")
 

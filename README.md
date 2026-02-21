@@ -1,5 +1,7 @@
 # deej - updated 2025
 
+> **This is a personal fork** of [omriharel/deej](https://github.com/omriharel/deej). See [Changes in this fork](#changes-in-this-fork) for what's been added. Changes were developed with AI assistance (Claude by Anthropic) — see [`CLAUDE.md`](./CLAUDE.md) for full details.
+
 deej is an **open-source hardware volume mixer** for Windows and Linux PCs. It lets you use real-life sliders (like a DJ!) to **seamlessly control the volumes of different apps** (such as your music player, the game you're playing and your voice chat session) without having to stop what you're doing.
 
 **Join the [deej Discord server](https://discord.gg/nf88NJu) if you need help or have any questions!**
@@ -24,6 +26,7 @@ deej consists of a [lightweight desktop client](#features) written in Go, and an
 
 ## Table of contents
 
+- [Changes in this fork](#changes-in-this-fork)
 - [Features](#features)
 - [How it works](#how-it-works)
   - [Hardware](#hardware)
@@ -42,6 +45,38 @@ deej consists of a [lightweight desktop client](#features) written in Go, and an
   - [Building from source](#building-from-source)
 - [Community](#community)
 - [License](#license)
+
+## Changes in this fork
+
+This fork extends the original deej with:
+
+- **Updated toolchain** — Go 1.23.7, updated dependencies, improved serial connection reliability on Windows
+- **Mute buttons** — up to 5 digital buttons that toggle the mute state of a configured app or device
+
+### Mute buttons
+
+Wire momentary push buttons to digital pins on your Arduino (see the included sketch [`arduino/deej-5-sliders-vanilla/deej-5-sliders-5-buttons.ino`](./arduino/deej-5-sliders-vanilla/deej-5-sliders-5-buttons.ino)). Each button press toggles mute on the configured target. The current mute state is always read from the OS, so it stays correct even if you mute something externally (e.g. via the Windows mixer).
+
+**Config example:**
+
+```yaml
+# tell deej how many of the serial values are buttons (they come after the sliders)
+num_buttons: 5
+
+# map button indexes (0-based) to the same targets as slider_mapping
+button_mapping:
+  0: master
+  1: chrome.exe
+  2: mic
+  3:
+    - spotify.exe
+    - discord.exe
+  4: discord.exe
+```
+
+All the same targets work as for sliders: `master`, `mic`, `system`, process names, device friendly names, etc.
+
+---
 
 ## Features
 

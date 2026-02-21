@@ -1,7 +1,6 @@
 package deej
 
 import (
-	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -11,8 +10,6 @@ import (
 
 // normal PulseAudio volume (100%)
 const maxVolume = 0x10000
-
-var errNoSuchProcess = errors.New("No such process")
 
 type paSession struct {
 	baseSession
@@ -125,6 +122,16 @@ func (s *paSession) SetVolume(v float32) error {
 	return nil
 }
 
+func (s *paSession) GetMute() bool {
+	s.logger.Debug("Mute not yet implemented on Linux")
+	return false
+}
+
+func (s *paSession) SetMute(muted bool) error {
+	s.logger.Debug("Mute not yet implemented on Linux")
+	return nil
+}
+
 func (s *paSession) Release() {
 	s.logger.Debug("Releasing audio session")
 }
@@ -192,6 +199,16 @@ func (s *masterSession) SetVolume(v float32) error {
 
 	s.logger.Debugw("Adjusting session volume", "to", fmt.Sprintf("%.2f", v))
 
+	return nil
+}
+
+func (s *masterSession) GetMute() bool {
+	s.logger.Debug("Mute not yet implemented on Linux")
+	return false
+}
+
+func (s *masterSession) SetMute(muted bool) error {
+	s.logger.Debug("Mute not yet implemented on Linux")
 	return nil
 }
 

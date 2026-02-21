@@ -33,7 +33,8 @@ type SerialIO struct {
 	lastKnownNumSliders        int
 	currentSliderPercentValues []float32
 
-	sliderMoveConsumers []chan SliderMoveEvent
+	sliderMoveConsumers  []chan SliderMoveEvent
+	buttonPressConsumers []chan ButtonPressEvent
 
 	reconnectTicker *time.Ticker
 	stopTicker      chan bool
@@ -48,6 +49,11 @@ type SliderMoveEvent struct {
 	PercentValue float32
 }
 
+// ButtonPressEvent represents a single button press captured by deej
+type ButtonPressEvent struct {
+	ButtonID int
+}
+
 var expectedLinePattern = regexp.MustCompile(`^\d{1,4}(\|\d{1,4})*\r\n$`)
 
 // NewSerialIO creates a SerialIO instance that uses the provided deej
@@ -56,15 +62,16 @@ func NewSerialIO(deej *Deej, logger *zap.SugaredLogger) (*SerialIO, error) {
 	logger = logger.Named("serial")
 
 	sio := &SerialIO{
-		deej:                deej,
-		logger:              logger,
-		stopChannel:         make(chan bool),
-		connected:           false,
-		conn:                nil,
-		sliderMoveConsumers: []chan SliderMoveEvent{},
-		reconnectTicker:     time.NewTicker(30 * time.Second),
-		stopTicker:          make(chan bool),
-		maxRetries:          5,
+		deej:                 deej,
+		logger:               logger,
+		stopChannel:          make(chan bool),
+		connected:            false,
+		conn:                 nil,
+		sliderMoveConsumers:  []chan SliderMoveEvent{},
+		buttonPressConsumers: []chan ButtonPressEvent{},
+		reconnectTicker:      time.NewTicker(30 * time.Second),
+		stopTicker:           make(chan bool),
+		maxRetries:           5,
 		connOptions: serial.OpenOptions{
 			DataBits:        8,
 			StopBits:        1,
@@ -128,8 +135,16 @@ func (sio *SerialIO) Stop() {
 // SubscribeToSliderMoveEvents returns an unbuffered channel that receives
 // a sliderMoveEvent struct every time a slider moves
 func (sio *SerialIO) SubscribeToSliderMoveEvents() chan SliderMoveEvent {
-	ch := make(chan SliderMoveEvent, 32) // Add buffer
+	ch := make(chan SliderMoveEvent, 32)
 	sio.sliderMoveConsumers = append(sio.sliderMoveConsumers, ch)
+	return ch
+}
+
+// SubscribeToButtonPressEvents returns a channel that receives a ButtonPressEvent
+// whenever a button is pressed (i.e. its value transitions to 1)
+func (sio *SerialIO) SubscribeToButtonPressEvents() chan ButtonPressEvent {
+	ch := make(chan ButtonPressEvent, 32)
+	sio.buttonPressConsumers = append(sio.buttonPressConsumers, ch)
 	return ch
 }
 
@@ -192,11 +207,26 @@ func (sio *SerialIO) handleLine(logger *zap.SugaredLogger, line string) {
 
 	line = strings.TrimSuffix(line, "\r\n")
 	splitLine := strings.Split(line, "|")
-	numSliders := len(splitLine)
+	numValues := len(splitLine)
 
-	sio.updateSliderCount(logger, numSliders)
-	moveEvents := sio.processSliderValues(logger, splitLine)
-	sio.deliverMoveEvents(moveEvents)
+	numButtons := sio.deej.config.NumButtons
+	numSliders := numValues - numButtons
+
+	// guard against a misconfigured num_buttons that exceeds the received data
+	if numSliders < 0 {
+		numSliders = 0
+	}
+
+	if numSliders > 0 {
+		sio.updateSliderCount(logger, numSliders)
+		moveEvents := sio.processSliderValues(logger, splitLine[:numSliders])
+		sio.deliverMoveEvents(moveEvents)
+	}
+
+	if numButtons > 0 && numSliders < numValues {
+		pressEvents := sio.processButtonValues(logger, splitLine[numSliders:])
+		sio.deliverPressEvents(pressEvents)
+	}
 }
 
 func (sio *SerialIO) updateSliderCount(logger *zap.SugaredLogger, numSliders int) {
@@ -256,6 +286,37 @@ func (sio *SerialIO) deliverMoveEvents(moveEvents []SliderMoveEvent) {
 		for _, consumer := range sio.sliderMoveConsumers {
 			for _, moveEvent := range moveEvents {
 				consumer <- moveEvent
+			}
+		}
+	}
+}
+
+func (sio *SerialIO) processButtonValues(logger *zap.SugaredLogger, buttonValues []string) []ButtonPressEvent {
+	pressEvents := []ButtonPressEvent{}
+
+	for btnIdx, stringValue := range buttonValues {
+		value, err := strconv.Atoi(stringValue)
+		if err != nil {
+			continue
+		}
+
+		if value == 1 {
+			pressEvents = append(pressEvents, ButtonPressEvent{ButtonID: btnIdx})
+
+			if sio.deej.Verbose() {
+				logger.Debugw("Button pressed", "buttonID", btnIdx)
+			}
+		}
+	}
+
+	return pressEvents
+}
+
+func (sio *SerialIO) deliverPressEvents(pressEvents []ButtonPressEvent) {
+	if len(pressEvents) > 0 {
+		for _, consumer := range sio.buttonPressConsumers {
+			for _, pressEvent := range pressEvents {
+				consumer <- pressEvent
 			}
 		}
 	}
