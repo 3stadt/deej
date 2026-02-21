@@ -27,6 +27,9 @@ type sessionMap struct {
 
 	lastSessionRefresh time.Time
 	unmappedSessions   []Session
+
+	ledStateMu       sync.Mutex
+	lastKnownLEDState map[int]LEDState
 }
 
 const (
@@ -65,11 +68,12 @@ func newSessionMap(deej *Deej, logger *zap.SugaredLogger, sessionFinder SessionF
 	logger = logger.Named("sessions")
 
 	m := &sessionMap{
-		deej:          deej,
-		logger:        logger,
-		m:             make(map[string][]Session),
-		lock:          &sync.Mutex{},
-		sessionFinder: sessionFinder,
+		deej:              deej,
+		logger:            logger,
+		m:                 make(map[string][]Session),
+		lock:              &sync.Mutex{},
+		sessionFinder:     sessionFinder,
+		lastKnownLEDState: make(map[int]LEDState),
 	}
 
 	logger.Debug("Created session map instance")
@@ -86,6 +90,8 @@ func (m *sessionMap) initialize() error {
 	m.setupOnConfigReload()
 	m.setupOnSliderMove()
 	m.setupOnButtonPress()
+	m.setupOnConnect()
+	m.setupMuteStatePoller()
 
 	return nil
 }
@@ -158,6 +164,100 @@ func (m *sessionMap) setupOnButtonPress() {
 	}()
 }
 
+func (m *sessionMap) setupOnConnect() {
+	connectChannel := m.deej.serial.SubscribeToConnectEvents()
+
+	go func() {
+		for range connectChannel {
+			m.logger.Debug("Serial connected, syncing LED states")
+
+			// Reset last known state so every LED is re-sent to the freshly connected Arduino
+			m.ledStateMu.Lock()
+			m.lastKnownLEDState = make(map[int]LEDState)
+			m.ledStateMu.Unlock()
+
+			m.syncAllLEDs()
+		}
+	}()
+}
+
+func (m *sessionMap) setupMuteStatePoller() {
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			m.syncAllLEDs()
+		}
+	}()
+}
+
+// syncAllLEDs reads the current mute state for every button that has an LED configured
+// and sends a command to the Arduino when the state has changed since the last check.
+func (m *sessionMap) syncAllLEDs() {
+	for buttonIdx, pin := range m.deej.config.LEDMapping {
+		state := m.computeLEDState(buttonIdx)
+
+		m.ledStateMu.Lock()
+		last, exists := m.lastKnownLEDState[buttonIdx]
+		changed := !exists || last != state
+		if changed {
+			m.lastKnownLEDState[buttonIdx] = state
+		}
+		m.ledStateMu.Unlock()
+
+		if changed {
+			if err := m.deej.serial.SendLEDCommand(pin, state); err != nil {
+				m.logger.Debugw("Failed to send LED command",
+					"buttonIdx", buttonIdx,
+					"pin", pin,
+					"state", state,
+					"error", err)
+			}
+		}
+	}
+}
+
+// computeLEDState determines the LED state for a button based on the mute state of its targets:
+//   - LEDOff   — all targets are unmuted, or no active sessions found
+//   - LEDOn    — all active sessions are muted
+//   - LEDBlink — mixed: some muted, some not
+func (m *sessionMap) computeLEDState(buttonIdx int) LEDState {
+	targets, ok := m.deej.config.ButtonMapping.get(buttonIdx)
+	if !ok {
+		return LEDOff
+	}
+
+	mutedCount := 0
+	totalCount := 0
+
+	for _, target := range targets {
+		for _, resolvedTarget := range m.resolveTarget(target) {
+			sessions, ok := m.get(resolvedTarget)
+			if !ok {
+				continue
+			}
+
+			for _, session := range sessions {
+				totalCount++
+				if session.GetMute() {
+					mutedCount++
+				}
+			}
+		}
+	}
+
+	if totalCount == 0 {
+		return LEDOff
+	} else if mutedCount == totalCount {
+		return LEDOn
+	} else if mutedCount == 0 {
+		return LEDOff
+	}
+
+	return LEDBlink
+}
+
 func (m *sessionMap) handleButtonPressEvent(event ButtonPressEvent) {
 
 	// ensure our session map isn't stale
@@ -201,6 +301,9 @@ func (m *sessionMap) handleButtonPressEvent(event ButtonPressEvent) {
 			}
 		}
 	}
+
+	// immediately reflect the new mute state on any configured LEDs
+	m.syncAllLEDs()
 }
 
 // performance: explain why force == true at every such use to avoid unintended forced refresh spams

@@ -52,6 +52,7 @@ This fork extends the original deej with:
 
 - **Updated toolchain** — Go 1.23.7, updated dependencies, improved serial connection reliability on Windows
 - **Mute buttons** — up to 5 digital buttons that toggle the mute state of a configured app or device
+- **LED mute indicators** — per-button LEDs driven by the Go program that show the current mute state in real time, including changes made outside of deej
 
 ### Mute buttons
 
@@ -75,6 +76,29 @@ button_mapping:
 ```
 
 All the same targets work as for sliders: `master`, `mic`, `system`, process names, device friendly names, etc.
+
+### LED mute indicators
+
+Wire an LED (with a current-limiting resistor) to a digital output pin for each button. The Go program sends commands to the Arduino over the existing serial connection to control the LEDs:
+
+- **Solid on** — all mapped targets are muted
+- **Solid off** — all mapped targets are unmuted (or no active sessions found)
+- **Blinking** — mixed state: some targets muted, some not. This signals that pressing the button will toggle each target independently rather than creating a uniform mute/unmute, which may produce an unexpected result
+
+The LED state updates immediately on a button press and is also polled every 500 ms to catch mute changes made externally (e.g. via the Windows volume mixer or an application muting itself). The LED pins are also re-synced automatically when the Arduino reconnects.
+
+**Config example:**
+
+```yaml
+# map button indexes to the Arduino digital pin the LED is connected to
+# make sure these pins don't overlap with your button input pins
+led_mapping:
+  0: 5
+  1: 6
+  2: 7
+  3: 8
+  4: 9
+```
 
 ---
 

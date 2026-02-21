@@ -47,3 +47,19 @@ button_mapping:
     - pathofexile_x64.exe
     - rocketleague.exe
   4: discord.exe
+
+# LED indicators for mute buttons (Windows only)
+# maps button index to the Arduino digital pin the LED is connected to
+# the Go program sends commands to the Arduino to light up the LED when the target is muted:
+#   - solid on  = all targets muted
+#   - solid off = all targets unmuted
+#   - blinking  = mixed state (some muted, some not) — pressing the button will unsync them further
+# make sure the LED pins don't overlap with your button input pins or other used pins
+# important: button indexes are the same as configured above.
+# "0: 5" for example means: When the target with index 0 from button_mapping is muted, the LED on digital pin 5 is used to signal the current state
+led_mapping:
+  0: 5
+  1: 6
+  2: 7
+  3: 8
+  4: 9
