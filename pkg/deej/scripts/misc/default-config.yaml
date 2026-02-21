@@ -25,3 +25,25 @@ baud_rate: 9600
 # adjust the amount of signal noise reduction depending on your hardware quality
 # supported values are "low" (excellent hardware), "default" (regular hardware) or "high" (bad, noisy hardware)
 noise_reduction: default
+
+# mute buttons are only implemented for Windows
+# number of digital buttons connected to the arduino (must match your arduino sketch's NUM_BUTTONS)
+# the last num_buttons values in each serial line are treated as button states (0 or 1)
+# set to 0 (or omit) if you have no buttons
+num_buttons: 5
+
+# mute buttons are only implemented for Windows
+# process names are case-insensitive
+# button_mapping works like slider_mapping but for mute toggle buttons
+# each button press toggles the mute state of the configured target, reading the current state from the OS
+# the same targets are supported: process names, 'master', 'mic', 'system', device names
+# the targets configured here can be the same or different ones than the ones configured in slider_mapping
+# important: button indexes start at 0
+button_mapping:
+  0: master
+  1: chrome.exe
+  2: spotify.exe
+  3:
+    - pathofexile_x64.exe
+    - rocketleague.exe
+  4: discord.exe
