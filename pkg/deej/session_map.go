@@ -13,6 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
+var errNoSuchProcess = errors.New("No such process")
+var errRefreshSessions = errors.New("Trigger session refresh")
+
 type sessionMap struct {
 	deej   *Deej
 	logger *zap.SugaredLogger

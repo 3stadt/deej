@@ -1,7 +1,6 @@
 package deej
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -10,9 +9,6 @@ import (
 	"github.com/moutend/go-wca/pkg/wca"
 	"go.uber.org/zap"
 )
-
-var errNoSuchProcess = errors.New("No such process")
-var errRefreshSessions = errors.New("Trigger session refresh")
 
 type wcaSession struct {
 	baseSession

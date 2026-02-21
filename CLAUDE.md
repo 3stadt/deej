@@ -44,7 +44,7 @@ All Go source lives in `pkg/deej/`. Key files:
 | `session_windows.go` | Windows implementations: `wcaSession` (apps, via `ISimpleAudioVolume`) and `masterSession` (devices, via `IAudioEndpointVolume`) |
 | `session_linux.go` | Linux implementations via PulseAudio (`jfreymuth/pulse`) |
 | `session_finder_windows.go` | Enumerates all active audio sessions via Windows Core Audio COM API |
-| `session_map.go` | Maps sessions to config targets; handles slider move and button press events |
+| `session_map.go` | Maps sessions to config targets; handles slider move and button press events; defines shared error sentinels (`errNoSuchProcess`, `errRefreshSessions`) |
 | `config.go` | Loads and watches `config.yaml`; exposes `CanonicalConfig` |
 | `slider_map.go` | `sliderMap` type (used for both `slider_mapping` and `button_mapping`) |
 | `deej.go` | Top-level orchestrator |
@@ -99,7 +99,7 @@ The split point is determined by `num_buttons` in config. If `num_buttons` is 0 
 
 - Match the existing style in each file (tabs, zap structured logging, etc.)
 - Use `s.logger.Warnw(...)` for recoverable errors, `Debugw` for normal operation
-- Error sentinel `errRefreshSessions` signals the session map to force-refresh
+- Error sentinels `errNoSuchProcess` and `errRefreshSessions` are defined in `session_map.go` and shared across platform implementations; `errRefreshSessions` signals the session map to force-refresh
 - Always run `go build ./...` after changes to verify compilation
 - Platform-specific code goes in `_windows.go` / `_linux.go` files
 - The `Session` interface must be satisfied by all platform implementations — add stubs to `session_linux.go` whenever the interface grows
