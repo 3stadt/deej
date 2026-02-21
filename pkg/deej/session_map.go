@@ -1,6 +1,7 @@
 package deej
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -81,6 +82,7 @@ func (m *sessionMap) initialize() error {
 
 	m.setupOnConfigReload()
 	m.setupOnSliderMove()
+	m.setupOnButtonPress()
 
 	return nil
 }
@@ -126,12 +128,9 @@ func (m *sessionMap) setupOnConfigReload() {
 	configReloadedChannel := m.deej.config.SubscribeToChanges()
 
 	go func() {
-		for {
-			select {
-			case <-configReloadedChannel:
-				m.logger.Info("Detected config reload, attempting to re-acquire all audio sessions")
-				m.refreshSessions(false)
-			}
+		for range configReloadedChannel {
+			m.logger.Info("Detected config reload, attempting to re-acquire all audio sessions")
+			m.refreshSessions(false)
 		}
 	}()
 }
@@ -140,13 +139,65 @@ func (m *sessionMap) setupOnSliderMove() {
 	sliderEventsChannel := m.deej.serial.SubscribeToSliderMoveEvents()
 
 	go func() {
-		for {
-			select {
-			case event := <-sliderEventsChannel:
-				m.handleSliderMoveEvent(event)
-			}
+		for ev := range sliderEventsChannel {
+			m.handleSliderMoveEvent(ev)
 		}
 	}()
+}
+
+func (m *sessionMap) setupOnButtonPress() {
+	buttonEventsChannel := m.deej.serial.SubscribeToButtonPressEvents()
+
+	go func() {
+		for ev := range buttonEventsChannel {
+			m.handleButtonPressEvent(ev)
+		}
+	}()
+}
+
+func (m *sessionMap) handleButtonPressEvent(event ButtonPressEvent) {
+
+	// ensure our session map isn't stale
+	if m.lastSessionRefresh.Add(maxTimeBetweenSessionRefreshes).Before(time.Now()) {
+		m.logger.Debug("Stale session map detected on button press, refreshing")
+		m.refreshSessions(true)
+	}
+
+	// get the targets mapped to this button from the config
+	targets, ok := m.deej.config.ButtonMapping.get(event.ButtonID)
+	if !ok {
+		return
+	}
+
+	for _, target := range targets {
+		resolvedTargets := m.resolveTarget(target)
+
+		for _, resolvedTarget := range resolvedTargets {
+			sessions, ok := m.get(resolvedTarget)
+			if !ok {
+				continue
+			}
+
+			for _, session := range sessions {
+				currentMute := session.GetMute()
+				newMute := !currentMute
+
+				if err := session.SetMute(newMute); err != nil {
+					m.logger.Warnw("Failed to toggle mute for session",
+						"target", resolvedTarget,
+						"error", err)
+
+					if errors.Is(err, errRefreshSessions) {
+						m.refreshSessions(true)
+					}
+				} else {
+					m.logger.Debugw("Toggled session mute",
+						"target", resolvedTarget,
+						"muted", newMute)
+				}
+			}
+		}
+	}
 }
 
 // performance: explain why force == true at every such use to avoid unintended forced refresh spams

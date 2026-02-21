@@ -52,6 +52,20 @@ func sliderMapFromConfigs(userMapping map[string][]string, internalMapping map[s
 	return resultMap
 }
 
+func buttonMapFromConfig(userMapping map[string][]string) *sliderMap {
+	resultMap := newSliderMap()
+
+	for idxString, targets := range userMapping {
+		idx, _ := strconv.Atoi(idxString)
+
+		resultMap.set(idx, funk.FilterString(targets, func(s string) bool {
+			return s != ""
+		}))
+	}
+
+	return resultMap
+}
+
 func (m *sliderMap) iterate(f func(int, []string)) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
