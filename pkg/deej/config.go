@@ -3,6 +3,7 @@ package deej
 import (
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,9 @@ type CanonicalConfig struct {
 
 	NumButtons int
 
+	// LEDMapping maps button index to the Arduino digital pin number of the corresponding LED
+	LEDMapping map[int]int
+
 	logger             *zap.SugaredLogger
 	notifier           Notifier
 	stopWatcherChannel chan bool
@@ -53,6 +57,7 @@ const (
 
 	configKeySliderMapping       = "slider_mapping"
 	configKeyButtonMapping       = "button_mapping"
+	configKeyLEDMapping          = "led_mapping"
 	configKeyInvertSliders       = "invert_sliders"
 	configKeyCOMPort             = "com_port"
 	configKeyBaudRate            = "baud_rate"
@@ -249,10 +254,31 @@ func (cc *CanonicalConfig) populateFromVipers() error {
 	cc.InvertSliders = cc.userConfig.GetBool(configKeyInvertSliders)
 	cc.NoiseReductionLevel = cc.userConfig.GetString(configKeyNoiseReductionLevel)
 	cc.NumButtons = cc.userConfig.GetInt(configKeyNumButtons)
+	cc.LEDMapping = ledMappingFromConfig(cc.userConfig.GetStringMapString(configKeyLEDMapping))
 
 	cc.logger.Debug("Populated config fields from vipers")
 
 	return nil
+}
+
+func ledMappingFromConfig(raw map[string]string) map[int]int {
+	result := make(map[int]int)
+
+	for keyStr, valStr := range raw {
+		key, err := strconv.Atoi(keyStr)
+		if err != nil {
+			continue
+		}
+
+		val, err := strconv.Atoi(valStr)
+		if err != nil {
+			continue
+		}
+
+		result[key] = val
+	}
+
+	return result
 }
 
 func (cc *CanonicalConfig) onConfigReloaded() {

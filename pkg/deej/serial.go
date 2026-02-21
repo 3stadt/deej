@@ -9,12 +9,22 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jacobsa/go-serial/serial"
 	"go.uber.org/zap"
 
 	"github.com/omriharel/deej/pkg/deej/util"
+)
+
+// LEDState represents the desired state of a button's indicator LED
+type LEDState int
+
+const (
+	LEDOff   LEDState = 0 // all targets unmuted (or no active sessions)
+	LEDOn    LEDState = 1 // all targets muted
+	LEDBlink LEDState = 2 // mixed mute state across targets
 )
 
 // SerialIO provides a deej-aware abstraction layer to managing serial I/O
@@ -35,6 +45,9 @@ type SerialIO struct {
 
 	sliderMoveConsumers  []chan SliderMoveEvent
 	buttonPressConsumers []chan ButtonPressEvent
+	connectedConsumers   []chan struct{}
+
+	writeMu sync.Mutex
 
 	reconnectTicker *time.Ticker
 	stopTicker      chan bool
@@ -69,6 +82,7 @@ func NewSerialIO(deej *Deej, logger *zap.SugaredLogger) (*SerialIO, error) {
 		conn:                 nil,
 		sliderMoveConsumers:  []chan SliderMoveEvent{},
 		buttonPressConsumers: []chan ButtonPressEvent{},
+		connectedConsumers:   []chan struct{}{},
 		reconnectTicker:      time.NewTicker(30 * time.Second),
 		stopTicker:           make(chan bool),
 		maxRetries:           5,
@@ -322,6 +336,41 @@ func (sio *SerialIO) deliverPressEvents(pressEvents []ButtonPressEvent) {
 	}
 }
 
+// SubscribeToConnectEvents returns a channel that receives a value each time
+// a serial connection is successfully established (including reconnects)
+func (sio *SerialIO) SubscribeToConnectEvents() chan struct{} {
+	ch := make(chan struct{}, 1)
+	sio.connectedConsumers = append(sio.connectedConsumers, ch)
+	return ch
+}
+
+func (sio *SerialIO) notifyConnected() {
+	for _, consumer := range sio.connectedConsumers {
+		select {
+		case consumer <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// SendLEDCommand sends a command to the Arduino to set the state of a specific LED pin.
+// pin is the Arduino digital pin number; state is LEDOff, LEDOn, or LEDBlink.
+func (sio *SerialIO) SendLEDCommand(pin int, state LEDState) error {
+	if !sio.connected {
+		return fmt.Errorf("serial: not connected")
+	}
+
+	sio.writeMu.Lock()
+	defer sio.writeMu.Unlock()
+
+	_, err := fmt.Fprintf(sio.conn, "L%d,%d\n", pin, int(state))
+	if err != nil {
+		return fmt.Errorf("write LED command: %w", err)
+	}
+
+	return nil
+}
+
 func (sio *SerialIO) connect() error {
 	if sio.connected {
 		return nil
@@ -357,6 +406,7 @@ func (sio *SerialIO) connect() error {
 	sio.retryCount = 0
 	sio.connected = true
 	sio.startReading()
+	sio.notifyConnected()
 	return nil
 }
 
