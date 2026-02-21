@@ -23,8 +23,8 @@ Adds support for up to 5 digital mute-toggle buttons wired to the Arduino alongs
 - `num_buttons` config key tells the parser how many trailing values are buttons vs sliders
 - `button_mapping` config key maps button indices to the same targets as `slider_mapping`
 - Each button press reads the current mute state from the OS and toggles it (dynamic, not tracked internally)
-- Uses `ISimpleAudioVolume::GetMute/SetMute` for app sessions and `IAudioEndpointVolume::GetMute/SetMute` for master/device sessions
-- Linux mute is stubbed out (no-op) — PulseAudio implementation not yet done
+- Uses `ISimpleAudioVolume::GetMute/SetMute` for app sessions and `IAudioEndpointVolume::GetMute/SetMute` for master/device sessions on Windows
+- Linux mute uses PulseAudio via `jfreymuth/pulse`: `SetSinkInputMute`/`GetSinkInputInfo` for app sessions, `SetSinkMute`/`SetSourceMute` and `GetSinkInfo`/`GetSourceInfo` for master/device sessions
 
 ### 2. Dependency and reliability updates (pre-existing in this fork's base)
 
